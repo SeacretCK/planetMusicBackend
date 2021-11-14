@@ -4,6 +4,11 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 5000;
 
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
+// connection
+
 connection.connect((err) => {
   if (err) {
     console.error('error connecting: ' + err.stack);
@@ -14,9 +19,82 @@ connection.connect((err) => {
   }
 });
 
+// middleware
+
 app.use(express.json());
 
 // routes
+
+// register
+app.post('/register', (req, res) => {
+  const name = req.body.name;
+  const password = req.body.password;
+
+  connection.query(
+    'SELECT * FROM users WHERE name = ?;',
+    name,
+    (err, result) => {
+      if (err) {
+        res.send({ error: err });
+      }
+
+      if (result.length > 0) {
+        res.send({ message: 'Username already exists' });
+      } else {
+        bcrypt.hash(password, saltRounds, (err, hashedPw) => {
+          if (err) {
+            console.log(err);
+          }
+          connection.query(
+            'INSERT INTO users (name, password) VALUES (?,?)',
+            [name, hashedPw],
+            (err, result) => {
+              if (err) {
+                res.send({ error: err });
+              }
+              if (result.affectedRows === 1) {
+                res.send({ message: 'User created' });
+              }
+            }
+          );
+        });
+      }
+    }
+  );
+});
+
+// login
+app.post('/login', (req, res) => {
+  const name = req.body.name;
+  const password = req.body.password;
+
+  connection.query(
+    'SELECT * FROM users WHERE name = ?;',
+    name,
+    (err, result) => {
+      if (err) {
+        res.send({ error: err });
+      }
+
+      if (result.length > 0) {
+        bcrypt.compare(password, result[0].password, (error, response) => {
+          if (error) {
+            res.send({ error: error });
+          }
+          if (response) {
+            res.send({ message: 'Login successful' });
+          } else {
+            res.send({ message: 'Wrong password' });
+          }
+        });
+      } else {
+        res.send({ message: "User doesn't exist" });
+      }
+    }
+  );
+});
+
+// highscores
 app.get('/quiz/scores', (req, res) => {
   connection
     .promise()
