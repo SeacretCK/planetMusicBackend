@@ -6,6 +6,7 @@ const port = process.env.PORT || 5000;
 
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
+const session = require('express-session');
 
 // connection
 
@@ -22,8 +23,34 @@ connection.connect((err) => {
 // middleware
 
 app.use(express.json());
+app.use(
+  session({
+    secret: 'keyboard cat',
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      // 24 hours
+      expires: 1000 * 60 * 60 * 24,
+      sameSite: 'strict',
+    },
+  })
+);
 
 // routes
+// initial check if logged in
+app.get('/login', (req, res) => {
+  if (req.session.user) {
+    console.log('logged in user: ', req.session.user);
+    res.send({
+      loggedIn: true,
+      userName: req.session.user[0].name,
+      userId: req.session.user[0].id,
+    });
+  } else {
+    console.log('not logged in');
+    res.send({ loggedIn: false });
+  }
+});
 
 // register
 app.post('/register', (req, res) => {
@@ -39,7 +66,7 @@ app.post('/register', (req, res) => {
       }
 
       if (result.length > 0) {
-        res.send({ message: 'Username already exists' });
+        res.send({ userCreated: false, message: 'Username already exists' });
       } else {
         bcrypt.hash(password, saltRounds, (err, hashedPw) => {
           if (err) {
@@ -48,12 +75,12 @@ app.post('/register', (req, res) => {
           connection.query(
             'INSERT INTO users (name, password) VALUES (?,?)',
             [name, hashedPw],
-            (err, result) => {
+            (err, response) => {
               if (err) {
                 res.send({ error: err });
               }
-              if (result.affectedRows === 1) {
-                res.send({ message: 'User created' });
+              if (response.affectedRows === 1) {
+                res.send({ userCreated: true, message: 'User created' });
               }
             }
           );
@@ -82,9 +109,11 @@ app.post('/login', (req, res) => {
             res.send({ error: error });
           }
           if (response) {
-            res.send({ message: 'Login successful' });
+            req.session.user = result;
+            console.log(req.session.user);
+            res.send({ loggedIn: true, message: 'Login successful' });
           } else {
-            res.send({ message: 'Wrong password' });
+            res.send({ loggedIn: false, message: 'Wrong password' });
           }
         });
       } else {
@@ -92,6 +121,22 @@ app.post('/login', (req, res) => {
       }
     }
   );
+});
+
+// logout
+app.get('/logout', (req, res) => {
+  if (req.session) {
+    console.log('destroying session');
+    req.session.destroy((err) => {
+      if (err) {
+        res.send({ sessionDestroyed: false });
+        console.log('Unable to log out');
+      } else {
+        console.log('Logout successful');
+        res.send({ sessionDestroyed: true });
+      }
+    });
+  }
 });
 
 // highscores
